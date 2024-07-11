@@ -1,4 +1,4 @@
-Certainly! Here’s how you can format it under a "Projects" section in your README:
+
 
 ---
 
@@ -18,4 +18,4 @@ Certainly! Here’s how you can format it under a "Projects" section in your REA
 
 ---
 
-Feel free to adjust the formatting or expand on each point as needed in your README.
+
