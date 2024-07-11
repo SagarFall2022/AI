@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project demonstrates the implementation of an SQL AI Agent using Azure's OpenAI services. The agent is designed to interact with both SQL Server and SQLite databases, providing intelligent SQL query capabilities and detailed responses to user inquiries.
+This project demonstrates the implementation of an SQL AI Agent using Azure's OpenAI services. The agent is designed to interact with both SQL Server and SQLite databases, providing intelligent SQL query capabilities and detailed responses to user inquiries. Additionally, it includes a `TextEmbedder` class to generate text embeddings using Cohere's API.
 
 ## Features
 
@@ -12,6 +12,7 @@ This project demonstrates the implementation of an SQL AI Agent using Azure's Op
 - **Dual Database Support**: Supports both SQL Server and SQLite databases.
 - **Memory Management**: Uses `ConversationBufferMemory` to manage conversation history.
 - **Tool Integration**: Includes tools for running SQL queries, describing tables, writing reports, and handling personal messages.
+- **Text Embedding**: Uses Cohere's API to generate text embeddings.
 
 ## Requirements
 
@@ -20,6 +21,11 @@ This project demonstrates the implementation of an SQL AI Agent using Azure's Op
 - `langchain_openai`
 - `python-dotenv`
 - `os`
+- `re`
+- `requests`
+- `logging`
+- `tenacity`
+- `cohere`
 
 ## Setup
 
@@ -41,10 +47,13 @@ This project demonstrates the implementation of an SQL AI Agent using Azure's Op
     ```
 
 4. **Set up environment variables**:
-    Create a `.env` file in the project root and add your Azure OpenAI credentials:
+    Create a `.env` file in the project root and add your Azure OpenAI and Cohere credentials:
     ```env
     AZURE_OPENAI_API_VERSION=<your_azure_openai_api_version>
     AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=<your_azure_openai_chat_deployment_name>
+    AZURE_COHERE_DEPLOYMENT_NAME=<your_azure_cohere_deployment_name>
+    AZURE_COHERE_API_KEY=<your_azure_cohere_api_key>
+    AZURE_COHERE_SERVICE_NAME=<your_azure_cohere_service_name>
     ```
 
 5. **Run the script**:
@@ -141,6 +150,56 @@ response = agent_executor("How many orders are past due date?")
 print(response)
 ```
 
+### Text Embedding
+
+The `TextEmbedder` class provides functionality to generate text embeddings using Cohere's API.
+
+1. **Define the `TextEmbedder` Class**:
+    ```python
+    import os
+    import re
+    import cohere
+    from tenacity import retry, wait_random_exponential, stop_after_attempt  
+
+    class TextEmbedder():
+
+        AZURE_COHERE_EMBEDDING_DEPLOYMENT=os.getenv["AZURE_COHERE_DEPLOYMENT_NAME"]
+
+        def clean_text(self, text):
+            text = re.sub(r'\s+', ' ', text).strip()
+            text = re.sub(r'[\n\r]+', ' ', text).strip()
+            return text
+
+        @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(2))
+        def embed_content(self, text, clean_text=True, use_single_precision=True):
+            if clean_text:
+                text = self.clean_text(text)
+
+            cohere_api_key = os.getenv["AZURE_COHERE_API_KEY"]
+            cohere_base_url = os.getenv["AZURE_COHERE_SERVICE_NAME"]
+            co = cohere.Client(base_url=cohere_base_url, api_key=cohere_api_key) 
+
+            model = self.AZURE_COHERE_EMBEDDING_DEPLOYMENT
+            response = co.embed( 
+                texts=[text], 
+                model=model, 
+                input_type="search_document", 
+                embedding_types=["int8"], 
+            ) 
+            embedding = [embedding for embedding in response.embeddings.int8] 
+
+            return embedding[0]
+    ```
+
+2. **Using the `TextEmbedder`**:
+    ```python
+    embedder = TextEmbedder()
+    text = "Sample text to embed"
+    embedding = embedder.embed_content(text)
+    print(embedding)
+    ```
+
+
 
 ---
 
@@ -151,4 +210,4 @@ print(response)
 
 ---
 
-This README provides a comprehensive overview and setup instructions for your project, helping users get started quickly and effectively.
+This README provides a comprehensive overview and setup instructions for your project, helping users get started quickly and effectively, including the text embedding functionality.
