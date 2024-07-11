@@ -4,7 +4,7 @@
 
 1. **SQL AI Agent with Azure OpenAI Integration**
 
-   This project showcases the development of an SQL AI Agent using Azure's OpenAI services. It enables interaction with both SQL Server and SQLite databases, providing intelligent SQL query capabilities and detailed responses to user inquiries. Key features include:
+   This project showcases the development of an SQL AI Agent using Azure's OpenAI services. It enables interaction with both SQL Server and SQLite databases, providing intelligent SQL query capabilities and            detailed responses to user inquiries. Key features include:
 
    - **Azure OpenAI Integration**: Generates intelligent responses and executes SQL queries.
    - **Dual Database Support**: Interacts with SQL Server and SQLite databases.
