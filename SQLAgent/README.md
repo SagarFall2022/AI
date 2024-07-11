@@ -210,4 +210,3 @@ The `TextEmbedder` class provides functionality to generate text embeddings usin
 
 ---
 
-This README provides a comprehensive overview and setup instructions for your project, helping users get started quickly and effectively, including the text embedding functionality.
