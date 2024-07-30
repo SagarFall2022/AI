@@ -38,7 +38,7 @@ To get started with InfoRefine, follow these steps:
 
 1. **Clone the Repository**:
     ```bash
-    git clone https://github.com/yourusername/InfoRefine.git
+    git clone https://github.com/SagarFall2022/AI.git
     ```
 
 2. **Install Dependencies**:
