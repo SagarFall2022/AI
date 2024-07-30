@@ -1,9 +1,6 @@
 ---
 
 # InfoRefine
-
-## Overview
-
 **InfoRefine** is an advanced Retrieval-Augmented Generation (RAG) system designed to enhance the generation of accurate and contextually relevant information. Leveraging a LangGraph, InfoRefine integrates multiple components and tools to ensure high-quality output through a structured and efficient process.
 
 ## Project Flow
