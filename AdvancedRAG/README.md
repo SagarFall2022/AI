@@ -48,7 +48,7 @@ To get started with InfoRefine, follow these steps:
     ```
 
 3. **Configure the System**:
-    Follow the configuration instructions in `config.yaml` to set up your knowledge base, TAVILY credentials, and other necessary settings.
+    create the .env file and have all the environment variables and API's key created accordingly.
 
 4. **Run the System**:
     ```bash
