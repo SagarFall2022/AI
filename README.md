@@ -16,6 +16,13 @@
 
    This project offers a robust foundation for integrating advanced SQL querying and data analysis capabilities into AI-driven applications.
 
+
+2. **InfoRefine(AdvancedRAG)**
+
+**InfoRefine** is a Retrieval-Augmented Generation (RAG) system designed to produce accurate and contextually relevant information. It combines Chroma DB for efficient retrieval, TAVILY for web searches, LangSmith for monitoring, and Pytest for robust testing. The system refines information through a multi-step process, ensuring high-quality output.
+
+
+
 ---
 
 
