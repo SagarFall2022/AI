@@ -1,0 +1,288 @@
+{
+  "name": "Daily AI News Research Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4307229a-b58c-4bda-a581-d6e28926a7ff",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "model": "sonar-pro",
+        "messages": {
+          "message": [
+            {
+              "content": "You are an Expert AI Research Analyst specialized in tracking and summarizing the latest developments in artificial intelligence. Your task is to deliver **concise**, and **up-to-date** news summaries focused on new AI model releases, research breakthroughs and strategic moves by key AI players.",
+              "role": "system"
+            },
+            {
+              "content": "=Find and summarize the most recent AI News (within the last 24 hours). For references, today is {{ $today }} . Prioritize research breakthroughs, and key announcements by organizations like Open AI, Antropic, Google, meta, Mistral, XAI and Hugging Face. "
+            }
+          ]
+        },
+        "options": {
+          "searchRecency": "day"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-base.perplexity",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "bae1b00c-512a-422d-b3ea-421e20ad9a98",
+      "name": "Message a model",
+      "credentials": {
+        "perplexityApi": {
+          "id": "GDhlRVkzfEgZPuLa",
+          "name": "Perplexity account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Here is today's AI news from Perplexity:\n{{ $json.choices[0].message.content }}\n\nPlease: \n- Cross-check the news against the \"Past News Log Sheet\" and remove duplicates. Remove duplicate news from the output even if they were reported from different sources. Take some time to infer the past news in the sheet to ensure no duplication, since news might be worded differently.\n- Ensure each item has a clear, impactful 1-2 sentence summary.\n- After each summary, include unfurled source URL.\n- Use bold to highlight company names or major updates.\n- Add spacing between news items for readability.\n\nIf Perplexity's output news are all duplicates from the \"Past News Log Sheet\" respond appropriately with \"No notable AI development news in the past 24 hours\" \n\n##Output Format Rule\nOutput in text only, and start the daily news summary with \"Here's today's AI development news. Today is {{ $today }}...\""
+            },
+            {
+              "content": "You are an AI news formatter.\n\nYour role is to process, check and clean AI news results fetched from Perplexity, to ensure readability and that past headlines are not repeated when checked against Google Sheet Tool name \"Past News Log\"",
+              "role": "system"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        416,
+        0
+      ],
+      "id": "851caa57-596b-4fd0-bd6a-9d1f92198be6",
+      "name": "News Checking Agent",
+      "alwaysOutputData": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "iMAhXwtaz4XHuX4K",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU",
+          "mode": "list",
+          "cachedResultName": "Past AI News Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        512,
+        208
+      ],
+      "id": "aa12a153-4c98-4476-818d-d71f5fa708b5",
+      "name": "Past AI News Log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pzJ8dbvwrvRkcy8f",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "spatil6470@gmail.com",
+        "subject": "Daily AI News Digest",
+        "emailType": "text",
+        "message": "={{ $json.choices[0].message.content }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        768,
+        0
+      ],
+      "id": "2160d9b1-8359-4380-837b-df292df32226",
+      "name": "Send a message",
+      "webhookId": "8de38557-c15b-4764-aeef-da6adbf8e12f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "IT7jepNG1a4mbVro",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU",
+          "mode": "list",
+          "cachedResultName": "Past AI News Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1_M10WedUdpj90X2Wn_24XXR-etChJHvtbf_Gh5INsNU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $today }}",
+            "Headlines": "={{ $('News Checking Agent').item.json.choices[0].message.content }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Headlines",
+              "displayName": "Headlines",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        976,
+        0
+      ],
+      "id": "1871b89a-9cf7-4f36-8353-958a6fd263bb",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pzJ8dbvwrvRkcy8f",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "News Checking Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Past AI News Log": {
+      "ai_tool": [
+        [
+          {
+            "node": "News Checking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "News Checking Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2e4d9c0f-2efa-4b09-bfc4-c2753b902ee7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5028fbd6f0d72905d8714244f07224d300ef9590be56c48b41457f48c9660510"
+  },
+  "id": "J5ymEXzN927Sjmbh",
+  "tags": []
+}
