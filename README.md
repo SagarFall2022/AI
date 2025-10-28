@@ -19,6 +19,18 @@
 
    **InfoRefine** is a Retrieval-Augmented Generation (RAG) system designed to produce accurate and contextually relevant information. It combines Chroma DB for efficient retrieval, TAVILY for web searches, LangSmith for monitoring, and Pytest for robust testing. The          system refines information through a multi-step process, ensuring high-quality output.
 
+
+3. **Daily AI News Research Agent**
+
+   The Daily AI News Research Agent automates AI news discovery and summarization using n8n, GPT-4o, and Perplexity API. It fetches the latest AI developments, removes duplicates through Google Sheets memory, and emails a clean daily digest at 9 AM.
+
+    - **Perplexity + GPT-4o**: Fetches and summarizes daily AI updates.
+    - **Google Sheets Memory**: Tracks and filters past news items.
+    - **Automated Delivery**: Sends formatted digests via Gmail.
+    - **Fully Autonomous Flow**: Runs daily without manual input.
+
+   Tech Stack: n8n | GPT-4o | Perplexity API | Google Sheets | Gmail
+
 ---
 
 
