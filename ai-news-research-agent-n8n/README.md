@@ -94,7 +94,7 @@ Here's today's AI development news. Today is October 27, 2025 ...
 
 | Workflow View | Email Output |
 |:--------------:|:-------------:|
-| ![Workflow Screenshot](./screenshots/n8n_workflow_ui.png) | ![Sample Output](./docs/preview_output.png) |
+| ![Workflow Screenshot](./screenshots/n8n_workflow_view.png) | ![Sample Output](./docs/preview_output.png) |
 
 ---
 
