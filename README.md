@@ -3,7 +3,16 @@
 ---
 
 ## Projects
-1. **SQL AI Agent with Azure OpenAI Integration**
+1. **ServiceNow + Slack AI Copilot (Personal Project)**
+
+   AI-powered incident lifecycle: create, dedupe, triage, and sync.
+   - **Slack Bot**: `/incident` command + interactive replies.
+   - **Duplicate Detection**: OpenAI embeddings + Qdrant vector search (≥0.80).
+   - **AI Triage**: LLM summaries of similar incidents inside Slack.
+   - **Realtime Sync**: ServiceNow Business Rule → REST → n8n → Qdrant upsert/delete.
+   - **Stack**: n8n · ServiceNow · Slack · OpenAI (GPT-4o-mini, text-embedding-3-small) · Qdrant.
+
+2. **SQL AI Agent with Azure OpenAI Integration**
 
    This project showcases the development of an SQL AI Agent using Azure's OpenAI services. It enables interaction with both SQL Server and SQLite databases, providing intelligent SQL query capabilities and detailed responses to user inquiries. Key features include:
 
@@ -15,12 +24,12 @@
 
    This project offers a robust foundation for integrating advanced SQL querying and data analysis capabilities into AI-driven applications.
 
-2. **InfoRefine(AdvancedRAG)**
+3. **InfoRefine(AdvancedRAG)**
 
    **InfoRefine** is a Retrieval-Augmented Generation (RAG) system designed to produce accurate and contextually relevant information. It combines Chroma DB for efficient retrieval, TAVILY for web searches, LangSmith for monitoring, and Pytest for robust testing. The          system refines information through a multi-step process, ensuring high-quality output.
 
 
-3. **Daily AI News Research Agent**
+4. **Daily AI News Research Agent**
 
    The Daily AI News Research Agent automates AI news discovery and summarization using n8n, GPT-4o, and Perplexity API. It fetches the latest AI developments, removes duplicates through Google Sheets memory, and emails a clean daily digest at 9 AM.
 

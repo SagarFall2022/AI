@@ -1,0 +1,1196 @@
+{
+  "name": "Smart Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/incident-intake",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        2576,
+        816
+      ],
+      "id": "3e5055db-7f3b-42bd-a4b3-38cae4aca66d",
+      "name": "Webhook - Intake",
+      "webhookId": "eb6ba807-f787-42c5-8c3f-eadefb92e101"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# n8n Python Native Beta\n# Input: a single item with JSON body from Webhook (could be Slack slash/event or raw JSON)\n# Output: queryText (str) and slack metadata\n\n\nbody = _items[0][\"json\"][\"body\"]\n\ntext = body.get(\"text\") or (body.get(\"event\", {}) or {}).get(\"text\") or \"\"\nchannel = body.get(\"channel_id\") or (body.get(\"event\", {}) or {}).get(\"channel\") or \"\"\nuser = body.get(\"user_id\") or (body.get(\"event\", {}) or {}).get(\"user\") or \"\"\n\noutput = {\n    \"queryText\": text.strip(),\n    \"slack\": {\"channel\": channel, \"user\": user}\n}\nreturn {\"json\": output}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        816
+      ],
+      "id": "dc9ec58d-8d6d-40d0-b195-0e1ab7978c1d",
+      "name": "Function - Normalize"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify( $('Function - Normalize').item.json.queryText) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3024,
+        816
+      ],
+      "id": "973696b3-ff04-47e2-8747-bbf00566c945",
+      "name": "Generate Embeddings",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "PvX5u0gv1llMVng5",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://16da3f03-d9dc-47b9-adcd-a678a6e7e859.us-west-1-0.aws.cloud.qdrant.io/collections/incidents/points/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "qdrantApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"vector\": [{{ $json.data[0].embedding }}],\n  \"limit\": 5,\n  \"with_payload\": true,\n  \"score_threshold\": 0.80,\n  \"filter\": {\n    \"must\": [\n      { \"key\": \"is_active\", \"match\": { \"value\": \"true\" } }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3248,
+        816
+      ],
+      "id": "06a7c4de-c1f2-43ec-b568-acbc3aac2b08",
+      "name": "Qdrant Search",
+      "credentials": {
+        "qdrantApi": {
+          "id": "JKxr94gkavytvWBU",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "936798d7-e9e8-46f8-a82e-9f4588ef09f2",
+              "leftValue": "={{ $json.choices[0].message.content.best_is_duplicate }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3824,
+        816
+      ],
+      "id": "45dd4118-ab50-488f-b36c-984133d254b8",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a duplicate incident verifier. Decide whether the NEW report is the same ongoing issue as any of the CANDIDATES.\nReturn strict JSON:\n{\n  \"best_is_duplicate\": true|false,\n  \"best_sys_id\": \"<sys_id or empty>\",\n  \"incident_number\": \"number of the best_sys_id\"\n  \"explanations\": [{\"sys_id\":\"...\",\"dup_score\":0..1,\"reason\":\"...\"}]\n}\nNotes:\n- \"dup_score\" is a calibrated similarity 0..1 for operational sameness (not just wording).\n- Prefer open/active incidents describing the same root problem/symptoms/impact.\n- Be conservative. If unsure, return best_is_duplicate=false.",
+              "role": "system"
+            },
+            {
+              "content": "=NEW:\n\"{{ $('Function - Normalize').item.json.queryText }}\"\n\nCANDIDATES (JSON):\n{{ JSON.stringify($json.result, null, 2) }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        3472,
+        816
+      ],
+      "id": "d8a1963d-d66d-4d4e-8103-4f78287742c6",
+      "name": "Duplicate Checker",
+      "credentials": {
+        "openAiApi": {
+          "id": "iMAhXwtaz4XHuX4K",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are a ServiceNow incident authoring assistant.\nFrom the user's free text, create an incident JSON with this exact schema:\n\n{\n  \"short_description\": \"<<=160 chars, imperative, crisp>\",\n  \"description\": \"<multi-paragraph, includes symptoms, scope, impact, when started, reproductions, and any observables>\",\n  \"category\": \"<one of: Hardware|Database|Inquiry / Help|Password Reset| Software>\",\n  \"impact\": \"<Low | Medium | High>\",\n  \"urgency\": \"<1|2|3>\",\n  \"priority\": \"<P1|P2|P3|P4>\",        // keep consistent with impact+urgency\n  \"assignment_group\": \"<best-fit team name>\",\n  \"tags\": [\"k1\",\"k2\",\"...\"]\n}\n\nRules:\n- short_description must be <=160 characters.\n- Prefer conservative values (impact/urgency) if unsure.\n- Do not include any extra keys.\n\n",
+              "role": "system"
+            },
+            {
+              "content": "=User report:\n\"{{ $('Function - Normalize').item.json.queryText }}\"\n\n(Optional) Slack metadata:\nchannel={{ $('Function - Normalize').item.json.slack.channel }}, user={{ $('Function - Normalize').item.json.slack.user }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "jsonOutput": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        4048,
+        912
+      ],
+      "id": "93d3ba49-0259-401c-9540-fd0317199a8b",
+      "name": "Draft Incident Fields",
+      "credentials": {
+        "openAiApi": {
+          "id": "iMAhXwtaz4XHuX4K",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "canonical =f\"\"\"(LLM Draft)----------Category:{_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"category\"]}------Priority: {_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"priority\"]}(impact: {_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"impact\"]},urgency: {_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"urgency\"]})-----Assignment Group: {_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"assignment_group\"]}----Short:\n{_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"short_description\"]}---Description:{_items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"description\"]}\"\"\"\n\nout = {\n\n        \"short_description\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"short_description\"],\n        \"description\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"description\"],\n        \"category\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"category\"],\n        \"impact\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"impact\"],\n        \"urgency\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"urgency\"],\n        \"priority\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"priority\"],\n        \"assignment_group\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"assignment_group\"],\n        \"tags\": _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"][\"tags\"],\n        \"canonical\":canonical\n}\nreturn out\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4400,
+        912
+      ],
+      "id": "aadd264d-dbc8-4708-8487-44d5b0a18541",
+      "name": "Validate & Canonicalize Draft"
+    },
+    {
+      "parameters": {
+        "authentication": "basicAuth",
+        "resource": "incident",
+        "operation": "create",
+        "short_description": "={{ $json.short_description }}",
+        "additionalFields": {
+          "category": "={{ $json.category }}",
+          "contact_type": "email",
+          "description": "={{ $json.description }}",
+          "impact": "={{ $json.impact }}",
+          "state": "1",
+          "urgency": "={{ $json.urgency }}"
+        }
+      },
+      "type": "n8n-nodes-base.serviceNow",
+      "typeVersion": 1,
+      "position": [
+        4624,
+        912
+      ],
+      "id": "c953d613-db4c-4236-91a4-5b31d4d9a3a7",
+      "name": "Create an incident",
+      "credentials": {
+        "serviceNowBasicApi": {
+          "id": "oa3JA5oGq4Zk26mK",
+          "name": "ServiceNow Basic Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "text-embedding-3-small"
+            },
+            {
+              "name": "input",
+              "value": "={{ $('Validate & Canonicalize Draft').item.json.canonical }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5296,
+        912
+      ],
+      "id": "7d66dc88-082f-4f58-88f2-ed393192f82c",
+      "name": "Generate Embeddings NEW",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "PvX5u0gv1llMVng5",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "item = _items[0][\"json\"][\"body\"][0][\"json\"]\n\npayload = {\n    \"sys_id\": item[\"sys_id\"],\n    \"number\": item.get(\"number\"),\n    \"short_description\": item[\"short_description\"],\n    \"description\": item[\"description\"],\n    \"category\": item[\"category\"],\n    \"priority\": item[\"priority\"],\n    \"state\": item[\"state\"],\n    \"assignment_group\": item[\"assignment_group\"],\n    \"tags\": \"\",\n    \"is_active\": \"true\",\n    \"updated_at_ts\": item[\"sys_updated_on\"],\n    \"source\": \"servicenow\"\n}\nreturn {\"json\": {\"payload\": payload}}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5072,
+        912
+      ],
+      "id": "545ffb93-a255-4eed-84cd-d0ae0d766312",
+      "name": "Code in Python (Native) (Beta)"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "# Loop over input items and add a new field called 'my_new_field' to the JSON of each one\n\n\nresult={\"body\":_items}\nreturn result"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4848,
+        912
+      ],
+      "id": "60765a12-4c52-4951-8a83-b71c2b0407ce",
+      "name": "Code in Python (Native) (Beta)1"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://16da3f03-d9dc-47b9-adcd-a678a6e7e859.us-west-1-0.aws.cloud.qdrant.io/collections/incidents/points",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "qdrantApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"points\": [\n    {\n      \"id\": \"{{ $('Code in Python (Native) (Beta)').item.json.payload.sys_id }}\",\n      \"vectors\": [{{ $node['Generate Embeddings NEW'].json.data[0].embedding }}],\n      \"payload\": {{ JSON.stringify($('Code in Python (Native) (Beta)').item.json.payload )}}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5520,
+        912
+      ],
+      "id": "a67bd014-829e-44b7-9d7b-d49ab4821cfa",
+      "name": "Upserting Data in Qdrant",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "PvX5u0gv1llMVng5",
+          "name": "Bearer Auth account"
+        },
+        "qdrantApi": {
+          "id": "JKxr94gkavytvWBU",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook - Intake').item.json.body.response_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"replace_original\":{{true}},\n   \"delete_original\": \"true\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": \"*Possible duplicate found*\" }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Incident:*\\n<https://dev225506.service-now.com/nav_to.do?uri=incident.do?sys_id={{$json.best_sys_id}}|{{ $('If').item.json.choices[0].message.content.incident_number }}>\"\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": \"*Why:*\\n{{$json.best_reason}}\" }\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": { \"type\": \"plain_text\", \"text\": \"Open in ServiceNow\" },\n          \"url\": \"https://dev225506.service-now.com/nav_to.do?uri=incident.do?sys_id={{$json.best_sys_id}}\"\n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        720
+      ],
+      "id": "23128db4-7df9-438f-82e4-e8c7961abca0",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "c = _items[0][\"json\"][\"choices\"][0][\"message\"][\"content\"]\nbest_id = c.get(\"best_sys_id\")\nexps = c.get(\"explanations\", [])\n\nhit = next((e for e in exps if e.get(\"sys_id\") == best_id), None)\nreason = hit[\"reason\"] if hit else (exps[0][\"reason\"] if exps else \"No explanation provided\")\nscore  = hit[\"dup_score\"] if hit else (exps[0][\"dup_score\"] if exps else \"n/a\")\n\nreturn {\"json\": {\n    \"best_sys_id\": best_id,\n    \"best_reason\": reason,\n    \"best_score\": score\n}}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4112,
+        720
+      ],
+      "id": "717fe922-9b59-4091-8fa7-d8e9de2fb01e",
+      "name": "Code in Python (Native) (Beta)2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook - Intake').item.json.body.response_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"response_type\": \"ephemeral\",\n  \"replace_original\": \"true\",\n  \"delete_original\": \"true\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \":white_check_mark: *Incident Created Successfully!*\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Incident Number:*\\n<https://dev225506.service-now.com/nav_to.do?uri=incident.do?sys_id={{ $('Code in Python (Native) (Beta)').item.json.payload.sys_id }}|{{ $('Code in Python (Native) (Beta)').item.json.payload.number }}>\"\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Summary:*\\nDraft from LLM successfully used to create a new incident in ServiceNow.\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": { \"type\": \"plain_text\", \"text\": \"View in ServiceNow\" },\n          \"url\": \"https://dev225506.service-now.com/nav_to.do?uri=incident.do?sys_id={{ $('Code in Python (Native) (Beta)').item.json.payload.sys_id }}\"\n        }\n      ]\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5744,
+        912
+      ],
+      "id": "acd47801-c061-455e-9e62-a21e1bf6c134",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "slack/triage",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        2560,
+        1248
+      ],
+      "id": "b996aad4-cecf-44be-88de-e0ada2bd4108",
+      "name": "Webhook-Incident Change Update",
+      "webhookId": "c52a9fd2-c5b9-4514-b61f-39f0290b206f"
+    },
+    {
+      "parameters": {
+        "language": "pythonNative",
+        "pythonCode": "\nbody = _items[0][\"json\"][\"body\"]\n\ntext = body.get(\"text\") or (body.get(\"event\", {}) or {}).get(\"text\") or \"\"\nchannel = body.get(\"channel_id\") or (body.get(\"event\", {}) or {}).get(\"channel\") or \"\"\nuser = body.get(\"user_id\") or (body.get(\"event\", {}) or {}).get(\"user\") or \"\"\n\noutput = {\n    \"queryText\": text.strip(),\n    \"slack\": {\"channel\": channel, \"user\": user}\n}\nreturn {\"json\": output}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        1248
+      ],
+      "id": "fc693e69-a43a-4d55-bd49-033e70a238a9",
+      "name": "Function - Normalize1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.queryText) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3008,
+        1248
+      ],
+      "id": "b3028ff6-7ea3-4eef-898b-1750cbbfe30b",
+      "name": "Generate Embeddings for the User Query",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "PvX5u0gv1llMVng5",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://16da3f03-d9dc-47b9-adcd-a678a6e7e859.us-west-1-0.aws.cloud.qdrant.io/collections/incidents/points/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "qdrantApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={\n  \"vector\": [{{ $json.data[0].embedding }}],\n  \"limit\": 5,\n  \"with_payload\": true,\n  \"score_threshold\": 0.60,\n  \"filter\": {\n    \"must\": [\n      { \"key\": \"is_active\", \"match\": { \"value\": \"true\" } }\n    ]\n  }\n\n   \n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3232,
+        1248
+      ],
+      "id": "9fbda4f8-313f-4534-b659-eb1f786c4437",
+      "name": "Qdrant Search for finding the similar incidents",
+      "credentials": {
+        "qdrantApi": {
+          "id": "JKxr94gkavytvWBU",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "07b88b57-64b6-4382-9726-29f55c9a5c92",
+              "leftValue": "={{\n  \n    $node[\"Qdrant Search for finding the similar incidents\"].json.result?.length\n  \n}}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3456,
+        1248
+      ],
+      "id": "8c560f65-a9b9-4d73-9227-85ef5106325f",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an intelligent IT Triage Assistant integrated with Slack, ServiceNow, and Qdrant.\n\nYour goal is to help users quickly diagnose or resolve issues by reasoning over historical incidents and providing general next-step guidance.\n\nFollow these rules strictly:\n\n1. **Primary Data Source:** Use only the information provided in the \"Incidents Info\".  \n   - Treat each record as a real ServiceNow incident with fields like: `number`, `priority`, `state`, `assignment_group`, `short_description`, and `description`.\n   - If the user’s query matches multiple incidents, summarize and group them logically.\n\n2. **Answer Style:**\n   - Be **concise**, **professional**, and **action-oriented**.\n   - Avoid unnecessary filler like “Based on the data provided”.\n   - Use **Markdown** formatting for readability.\n   - Always end with a short actionable suggestion (e.g., “Try verifying DNS routing or escalate to Network Operations if latency persists.”).\n\n3. **Content Generation Rules:**\n   - ✅ Mention the most relevant incident numbers and their key takeaways.\n   - ✅ Highlight common causes, known resolutions, or similar symptoms.\n   - ✅ Suggest probable root causes and practical next steps.\n   - ❌ Do NOT invent incidents or states not present in the input.\n   - ❌ Do NOT mention Qdrant, embeddings, or internal processes.\n\n4. **When No Close Match Exists:**\n   - Acknowledge the lack of similar incidents.\n   - Suggest possible next steps (e.g., check affected service, gather logs, create a new incident).\n   - Avoid hallucination or overly general responses.\n\n5. **Tone:**\n   - Helpful and precise.\n   - Avoid jargon unless the query is clearly technical.\n   - Speak as if you’re a Tier-2 support engineer assisting a colleague.\n\n\n",
+              "role": "system"
+            },
+            {
+              "content": "=User Query:\\n{{ $('Function - Normalize1').item.json.queryText }}\\n\\nTop hits JSON:\\n{{ JSON.stringify($json.result, null, 2)  }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        3680,
+        1152
+      ],
+      "id": "a4c1d03e-56b3-4ead-a398-5039dec6ab07",
+      "name": "Summarize and Cite",
+      "credentials": {
+        "openAiApi": {
+          "id": "iMAhXwtaz4XHuX4K",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ac890718-e62a-484c-9e6f-39b992b3d509",
+              "name": "=answer",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "f412ccaa-83ec-4071-84f6-e414e73a6dbe",
+              "name": "=bullets",
+              "value": "={{   (() => {     const res = $('Qdrant Search for finding the similar incidents').item.json;     const hits = res.result?.points || res.result || [];     const items = hits.slice(0,3).map((p) => {       const n = p.payload?.number || \"(unknown)\";       const id = p.payload?.sys_id;       const pr = p.payload?.priority;       const st = p.payload?.state;       const url = `https://dev225506.service-now.com/nav_to.do?uri=incident.do?sys_id=${id}`;       return `• <${url}|${n}> — priority ${pr}, state ${st}`;     });     return items.join(\"\\n\");   })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4032,
+        1152
+      ],
+      "id": "b4e2c439-13e3-4816-8948-3a5e15bb71a4",
+      "name": "Build Slack blocks (results)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook-Incident Change Update').item.json.body.response_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"response_type\": \"ephemeral\",\n  \"replace_original\": true,\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": \"*Triage result*\" }\n    },\n    {\n      \"type\": \"context\",\n      \"elements\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*You asked:* {{ $('Function - Normalize1').item.json.queryText }}\"\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": {{ JSON.stringify($json.answer) }} }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Related incidents*\\n{{ $json.bullets }}\"\n      }\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4256,
+        1152
+      ],
+      "id": "d75f01ae-b94f-4cab-a8ab-f9d9c44ff7e4",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Webhook-Incident Change Update').item.json.body.response_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"response_type\": \"ephemeral\",\n  \"replace_original\": true,\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": \"*Triage result*\" }\n    },\n    {\n      \"type\": \"context\",\n      \"elements\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*You asked:* {{ $('Function - Normalize1').item.json.queryText }}\"\n        }\n      ]\n    },\n    {\n      \"type\": \"section\",\n      \"text\": { \"type\": \"mrkdwn\", \"text\": \"Looks like its a new issue. Can you please use /incident and give as much description as possible of the issue you are facing. Based on that Bot will create an incident if there are no such incident created.\" }\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3744,
+        1344
+      ],
+      "id": "364cc5e2-1629-4ab5-89fc-d24ac1873836",
+      "name": "HTTP Request3"
+    },
+    {
+      "parameters": {
+        "content": "## Incident creation workflow (It checks for the duplicate incidents too)\n",
+        "height": 576,
+        "width": 3456
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        528
+      ],
+      "id": "fc496a3f-4587-41b5-baef-682c3a9b0655",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Triage workflow\n",
+        "height": 384,
+        "width": 3456,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2464,
+        1120
+      ],
+      "typeVersion": 1,
+      "id": "1b2cd7d3-fcba-4a51-b434-04aaf23019bf",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "servicenow/incidents/update",
+        "options": {
+          "noResponseBody": true
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        2496,
+        1712
+      ],
+      "id": "3afe02b0-1d54-4b1c-848f-441b7bf59eb1",
+      "name": "Webhook-Incident Change Update1",
+      "webhookId": "c52a9fd2-c5b9-4514-b61f-39f0290b206f"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4ace0fa5-3784-48c8-a754-4527a884c0d5",
+              "leftValue": "={{ $json.body.operation }}",
+              "rightValue": "delete",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2720,
+        1712
+      ],
+      "id": "09fbf442-5632-48f0-bf07-53769e33323b",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://16da3f03-d9dc-47b9-adcd-a678a6e7e859.us-west-1-0.aws.cloud.qdrant.io/collections/incidents/points/delete?wait=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "qdrantApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={\n  \"filter\": { \"must\": [{ \"key\": \"sys_id\", \"match\": { \"value\": \"{{ $('Webhook-Incident Change Update1').item.json.body.sys_id }}\" } }] }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2944,
+        1616
+      ],
+      "id": "e2842254-4646-4d07-85cc-7779a15ce8ed",
+      "name": "Delete the Incident from Qdrant",
+      "credentials": {
+        "qdrantApi": {
+          "id": "JKxr94gkavytvWBU",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"text-embedding-3-small\",\n  \"input\": {{ JSON.stringify($json.canonical,null,2)}}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3168,
+        1808
+      ],
+      "id": "bbb6e92c-e995-4f32-824b-3afe2e480118",
+      "name": "Generate Embeddings1",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "PvX5u0gv1llMVng5",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "19abb96d-d149-44c0-a90c-44d66d6373c4",
+              "name": "canonical",
+              "value": "={{\n  (() => {\n    const num = $json.number || $json.sys_id || $json.body.sys_id || '';\n    const pr  = String( $json.body.priority?? '');\n    const st  = String($json.body.state ?? '');\n    const ag  = $json.body.assignment_group || '';\n    const sd  = ($json.body.short_description || '').trim();\n    const ds  = ($json.body.description || '').trim();\n    const wn  = ($json.body.work_notes || '').trim();\n    return `${num}\nPriority:${pr} State:${st} Group:${ag}\n\nShort:\n${sd}\n\nDescription:\n${ds}\n\nRecent note:\n${wn}`;\n})()\n}}\n",
+              "type": "string"
+            },
+            {
+              "id": "0c3e59f7-5c46-4e3e-837d-3e28f0f57c53",
+              "name": "is_active",
+              "value": "={{ !['7','8','Closed','Canceled','Cancelled'].includes(String($json.body.state || '')) ? 'true' : 'false' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2944,
+        1808
+      ],
+      "id": "5780002a-4506-47cc-a0a3-410703af9abd",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://16da3f03-d9dc-47b9-adcd-a678a6e7e859.us-west-1-0.aws.cloud.qdrant.io/collections/incidents/points?wait=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "qdrantApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={\n  \"points\": [\n    {\n      \"id\": \"{{ $node['If2'].json.body.sys_id }}\",\n      \"vectors\": [{{ $json.data[0].embedding }}],\n      \"payload\": {\n        \"sys_id\": \"{{ $node['If2'].json.body.sys_id }}\",\n        \"number\": \"{{ $node['If2'].json.body.number }}\",\n        \"priority\": \"{{ String($node['If2'].json.body.priority ?? '') }}\",\n        \"state\": \"{{ String($node['If2'].json.body.state ?? '') }}\",\n        \"assignment_group\": \"{{ $node['If2'].json.body.assignment_group || '' }}\",\n        \"short_description\": {{ JSON.stringify($node['If2'].json.body.short_description) || '' }},\n        \"description\": {{ JSON.stringify($node['If2'].json.body.description) || '' }},\n        \"work_notes\": {{ JSON.stringify($node['If2'].json.body.work_notes) || '' }},\n        \"sys_updated_by\": \"{{ $node['If2'].json.body.sys_updated_by || '' }}\",\n        \"sys_updated_on\": \"{{ $node['If2'].json.body.sys_updated_on || '' }}\",\n        \"updated_at_ts\": \"{{ $now }}\",\n        \"is_active\": \"{{ $node['Edit Fields1'].json.is_active }}\",\n        \"source\": \"servicenow\"\n      }\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3392,
+        1808
+      ],
+      "id": "4d23df21-d6e0-43fd-9979-833fd44ade3e",
+      "name": "HTTP Request4",
+      "credentials": {
+        "qdrantApi": {
+          "id": "JKxr94gkavytvWBU",
+          "name": "QdrantApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Syncing the Updates between Service Now and Qdrant Index",
+        "height": 448,
+        "width": 3456,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        2464,
+        1536
+      ],
+      "typeVersion": 1,
+      "id": "08ec9d43-abe2-4d37-9a85-6ef3e7bb2ee2",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "# ----------------------------------------------------------------------------------------------------**ServiceNow + Slack AI Copilot – End-to-End Incident Intelligence**---------------------------------------------------------------------------------------------------------------                                                                                                                                                                                                                                                                                                                                    \n\n### **Smart Intake – Intelligent Incident Creation & Duplicate Detection**\n**Purpose:** Automates ServiceNow incident creation via Slack `/incident`, checking and preventing duplicates.  \n**Flow:**\n1. Webhook → Receives Slack request  \n2. Normalize → Extracts `text`, `channel`, `user`  \n3. Generate Embeddings → OpenAI (`text-embedding-3-small`)  \n4. Qdrant Search → Finds similar active incidents (≥0.80)  \n5. GPT-4o-mini → Confirms if duplicate exists  \n6. If Duplicate → Slack block: *Possible duplicate found*  \n7. Else → Generate structured incident JSON  \n8. Create Incident → Push to ServiceNow  \n9. Generate Embeddings + Upsert → Add to Qdrant index  \n10. Slack → Sends confirmation with incident link  \n\n**Setup Required:**  \n- OpenAI API Key (Embeddings + GPT-4o-mini)  \n- ServiceNow Basic Auth  \n- Qdrant Cloud (collection: `incidents`)  \n- Slack App with `response_url`  \n- Webhook: `/incident-intake`\n\n---\n\n### **AI Triage Assistant – Contextual Resolution from Historical Data**\n**Purpose:** Assists Slack users in troubleshooting issues using ServiceNow incident history.  \n**Flow:**\n1. Webhook `/slack/triage` → Receive user query  \n2. Normalize → Clean and format text  \n3. Generate Embeddings → Vectorize query  \n4. Qdrant Search → Retrieve top 5 similar incidents (≥0.60)  \n5. GPT-4o-mini → Summarize, infer cause & suggest next actions  \n6. Slack → Ephemeral triage summary with related incident links  \n7. No Matches → Prompts user to create a new incident  \n\n**Setup Required:**  \n- Same OpenAI + Qdrant credentials as Smart Intake  \n- Slack App for `/slack/triage`  \n- Consistent Qdrant ↔ ServiceNow schema mapping  \n\n---\n\n### **Real-Time Sync – ServiceNow ↔ Qdrant Update Engine**\n**Purpose:** Keeps Qdrant vectors aligned with latest ServiceNow updates.  \n**Flow:**\n1. Webhook `/servicenow/incidents/update` → Triggered by SN change events  \n2. If `operation=delete` → Remove from Qdrant  \n3. Else → Update canonical text & is_active flag  \n4. Re-embed via OpenAI → Refresh vector representation  \n5. Upsert → Maintain live & accurate Qdrant index  \n\n**Setup Required:**  \n- ServiceNow outbound REST → n8n Webhook  \n- Qdrant API key (write access)  \n- OpenAI Embeddings for update text  \n\n---\n\n### 🔗 **Integration Summary**\nSlack ⇄ n8n ⇄ OpenAI ⇄ Qdrant ⇄ ServiceNow  \n→ Unified **AI-driven ITSM Copilot** for *Smart Intake → Triage → Sync*\"\n",
+        "height": 1792,
+        "width": 4560,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1632,
+        224
+      ],
+      "typeVersion": 1,
+      "id": "6f85028a-40d4-463f-a34a-f5cca1c3c06f",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Intake": {
+      "main": [
+        [
+          {
+            "node": "Function - Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Normalize": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Search": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Checker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Native) (Beta)2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Incident Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Checker": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Incident Fields": {
+      "main": [
+        [
+          {
+            "node": "Validate & Canonicalize Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Canonicalize Draft": {
+      "main": [
+        [
+          {
+            "node": "Create an incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an incident": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Native) (Beta)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings NEW": {
+      "main": [
+        [
+          {
+            "node": "Upserting Data in Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Native) (Beta)1": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Native) (Beta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Native) (Beta)": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings NEW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upserting Data in Qdrant": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Native) (Beta)2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook-Incident Change Update": {
+      "main": [
+        [
+          {
+            "node": "Function - Normalize1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Normalize1": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings for the User Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings for the User Query": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Search for finding the similar incidents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Search for finding the similar incidents": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Summarize and Cite",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize and Cite": {
+      "main": [
+        [
+          {
+            "node": "Build Slack blocks (results)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack blocks (results)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook-Incident Change Update1": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "Delete the Incident from Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e96bb12a-24ed-4341-b1d4-be21c62b5f6a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5028fbd6f0d72905d8714244f07224d300ef9590be56c48b41457f48c9660510"
+  },
+  "id": "FTfRN08QsB1j7PgQ",
+  "tags": []
+}
