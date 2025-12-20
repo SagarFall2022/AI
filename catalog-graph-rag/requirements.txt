@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+pydantic-settings
+requests
+openai
+neo4j
+PyMuPDF
+pdfplumber
