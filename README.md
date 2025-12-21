@@ -40,6 +40,18 @@
 
    Tech Stack: n8n | GPT-4o | Perplexity API | Google Sheets | Gmail
 
+
+5. **catalog-graph-rag**
+
+   Retrieval-Augmented Generation over product/catalog data with an explicit knowledge graph layer for improved context, provenance, and structured reasoning.
+   - Ingests catalogs and semi-structured product data, extracts entities/attributes, and builds a property graph.
+   - Hybrid retrieval: vector embeddings + graph-neighborhood signals (co-occurrence, attribute links).
+   - Graph-aware prompt construction with provenance (node/document ids) for traceable LLM outputs.
+   - CLI / lightweight app for querying and demoing graph-aware answers.
+
+   Tech Stack: Python| gpt-4o | Cohere embeddings | Neo4j
+
+
 ---
 
 
